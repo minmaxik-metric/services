@@ -1,0 +1,168 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: metric-postgres
+    restart: always
+    ports:
+      - 5433:5432
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - metric-network
+
+  mongo:
+    image: mongo:8.2
+    container_name: metric-mongo
+    restart: always
+    ports:
+      - 27017:27017
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD} 
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - metric-network
+
+  timescale:
+    image: timescale/timescaledb:2.26.4-pg18
+    container_name: metric-timescaledb
+    restart: always
+    ports:
+      - 5434:5432
+    environment:
+      - POSTGRES_USER=${TIMESCALE_DB_USER}
+      - POSTGRES_PASSWORD=${TIMESCALE_DB_PASSWORD}
+    volumes:
+      - timescaledb_data:/var/lib/postgresql
+    networks:
+      - metric-network
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: metric-rabbitmq
+    restart: always
+    ports:
+      - 5672:5672
+      - 15672:15672
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+        - metric-network
+
+  postgres-exporter:
+    container_name: metric-postgres-exporter
+    image: prometheuscommunity/postgres-exporter
+    restart: always
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
+    ports:
+      - 9187:9187
+    networks:
+      - metric-network
+    depends_on:
+      - postgres
+
+  rabbitmq-exporter:
+    container_name: metric-rabbitmq-exporter
+    image: kbudde/rabbitmq-exporter
+    restart: always
+    environment:
+      - RABBIT_URL=http://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:15672
+    ports:
+      - 9419:9419
+    networks:
+      - metric-network
+    depends_on:
+      - rabbitmq
+
+  node-exporter:
+    container_name: metric-node-exporter
+    image: prom/node-exporter
+    restart: always
+    ports:
+      - 9100:9100
+    networks:
+      - metric-network
+
+  prometheus:
+    container_name: metric-prometheus
+    image: prom/prometheus:v3.9.1
+    restart: always
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+    networks:
+      - metric-network
+
+  grafana:
+    container_name: metric-grafana
+    image: grafana/grafana:12.3
+    restart: unless-stopped
+    ports:
+      - 3002:3000
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - metric-network
+
+  loki:
+    container_name: metric-loki
+    image: grafana/loki:3.6
+    restart: unless-stopped
+    volumes:
+      - ./loki-config.yml:/etc/loki/config.yml
+      - ./loki-data:/loki
+      - ./loki-wal:/wal
+    command: -config.file=/etc/loki/config.yml
+    ports:
+      - 3100:3100
+    networks:
+      - metric-network
+
+  promtail:
+    container_name: metric-promtail
+    image: grafana/promtail:3.6
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml
+      - ../logs:/var/log/services
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - metric-network
+
+
+  jaeger:
+    container_name: metric-jaeger
+    image: jaegertracing/all-in-one:1.76.0
+    restart: unless-stopped
+    ports:
+      - 16686:16686
+      - 4317:4317
+      - 4318:4318
+    networks:
+      - metric-network
+
+
+volumes:
+  postgres_data:
+  mongo_data:
+  timescaledb_data:
+  rabbitmq_data:
+  grafana-storage:
+
+networks:
+  metric-network:
+    external: true
