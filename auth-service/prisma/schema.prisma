@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider     = "prisma-client"
+  output       = "./generated"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id String @id @default(nanoid())
+
+  provider   Provider @default(GITHUB)
+  providerId String   @map("provider_id")
+  providerLogin String? @map("provider_login")
+  profileUrl String? @map("profile_url")
+
+  role Role @default(USER)
+
+  supervisorOrganizations SupervisorOrganization[] @relation("SupervisorOrganizations")
+  ownedSupervisorPools     SupervisorPoolMember[]  @relation("SupervisorPoolOwner")
+  memberSupervisorPools    SupervisorPoolMember[]  @relation("SupervisorPoolMember")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([provider, providerId], name: "unique_provider_pair")
+  @@index([provider, providerLogin])
+  @@index([profileUrl])
+  @@map("accounts")
+}
+
+model SupervisorOrganization {
+  id String @id @default(nanoid())
+
+  supervisor   Account @relation("SupervisorOrganizations", fields: [supervisorId], references: [id], onDelete: Cascade)
+  supervisorId String  @map("supervisor_id")
+
+  provider       Provider @default(GITHUB)
+  externalId     String   @map("external_id")
+  login          String
+  url            String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([supervisorId, provider, externalId], name: "unique_supervisor_organization")
+  @@index([provider, externalId])
+  @@map("supervisor_organizations")
+}
+
+model SupervisorPoolMember {
+  id String @id @default(nanoid())
+
+  owner   Account @relation("SupervisorPoolOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String  @map("owner_id")
+
+  member   Account @relation("SupervisorPoolMember", fields: [memberId], references: [id], onDelete: Cascade)
+  memberId String  @map("member_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([ownerId, memberId], name: "unique_supervisor_pool_member")
+  @@index([memberId])
+  @@map("supervisor_pool_members")
+}
+
+enum Provider {
+  GITHUB
+}
+
+enum Role {
+  USER
+  SUPERVISOR
+  ADMIN
+}
