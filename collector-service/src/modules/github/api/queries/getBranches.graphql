@@ -1,0 +1,22 @@
+query getBranches($owner: String!, $repo: String!, $cursor: String = null) {
+	repository(owner: $owner, name: $repo) {
+		owner {
+			id
+			login
+			url
+			avatarUrl
+		}
+		id
+		name
+		url
+		refs(refPrefix: "refs/heads/", first: 100, after: $cursor) {
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
+			nodes {
+				name
+			}
+		}
+	}
+}

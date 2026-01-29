@@ -1,0 +1,210 @@
+query getIssuesTimeline(
+	$owner: String!
+	$repo: String!
+	$number: Int!
+	$since: DateTime = null
+	$cursor: String = null
+) {
+	repository(owner: $owner, name: $repo) {
+		owner {
+			id
+			login
+			url
+			avatarUrl
+		}
+		id
+		name
+		url
+		issue(number: $number) {
+			id
+			timelineItems(
+				first: 100
+				since: $since
+				after: $cursor
+				itemTypes: [
+					CLOSED_EVENT
+					REOPENED_EVENT
+					ASSIGNED_EVENT
+					UNASSIGNED_EVENT
+					LABELED_EVENT
+					UNLABELED_EVENT
+					ISSUE_TYPE_ADDED_EVENT
+					ISSUE_TYPE_CHANGED_EVENT
+					ISSUE_TYPE_REMOVED_EVENT
+					ISSUE_COMMENT
+					COMMENT_DELETED_EVENT
+				]
+			) {
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+				nodes {
+					__typename
+
+					... on ClosedEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						createdAt
+					}
+
+					... on ReopenedEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						createdAt
+					}
+
+					... on AssignedEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						assignee {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						createdAt
+					}
+
+					... on UnassignedEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						assignee {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						createdAt
+					}
+
+					... on LabeledEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						label {
+							name
+						}
+						createdAt
+					}
+
+					... on UnlabeledEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						label {
+							name
+						}
+						createdAt
+					}
+
+					... on IssueTypeAddedEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						issueType {
+							name
+						}
+						createdAt
+					}
+
+					... on IssueTypeChangedEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						issueType {
+							name
+						}
+						createdAt
+					}
+
+					... on IssueTypeRemovedEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						issueType {
+							name
+						}
+						createdAt
+					}
+
+					... on IssueComment {
+						id
+						body
+						author {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						createdAt
+					}
+
+					... on CommentDeletedEvent {
+						id
+						actor {
+							__typename
+							... on User {
+								id
+								login
+							}
+						}
+						createdAt
+					}
+				}
+			}
+		}
+	}
+}

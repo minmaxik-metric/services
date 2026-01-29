@@ -1,0 +1,24 @@
+query getRepositories($owner: String!, $cursor: String = null) {
+	repositoryOwner(login: $owner) {
+		repositories(
+			first: 100
+			after: $cursor
+			orderBy: { field: CREATED_AT, direction: ASC }
+			ownerAffiliations: OWNER
+		) {
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
+			nodes {
+				id
+				name
+				url
+			}
+		}
+		id
+		login
+		url
+		avatarUrl
+	}
+}

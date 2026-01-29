@@ -1,0 +1,45 @@
+query getPullRequests($owner: String!, $repo: String!, $cursor: String = null) {
+	repository(owner: $owner, name: $repo) {
+		owner {
+			id
+			login
+			url
+			avatarUrl
+		}
+		id
+		name
+		url
+		pullRequests(
+			first: 100
+			after: $cursor
+			orderBy: { field: CREATED_AT, direction: ASC }
+		) {
+			nodes {
+				id
+				number
+				title
+				body
+				state
+				author {
+					__typename
+					... on User {
+						id
+						login
+					}
+				}
+				comments {
+					totalCount
+				}
+				additions
+				deletions
+				createdAt
+				updatedAt
+				closedAt
+			}
+			pageInfo {
+				hasNextPage
+				endCursor
+			}
+		}
+	}
+}
