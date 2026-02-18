@@ -1,0 +1,189 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider     = "prisma-client"
+  output       = "./generated"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["metrics"]
+}
+
+model Organization {
+  id String @id @default(nanoid())
+
+  provider   Provider @default(GITHUB)
+  externalId String   @map("external_id")
+
+  name      String
+  url       String
+  avatarUrl String? @map("avatar_url")
+
+  repositories Repository[]
+  metricEvents MetricEvent[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([provider, externalId])
+  @@map("organizations")
+  @@schema("metrics")
+}
+
+model Repository {
+  id String @id @default(nanoid())
+
+  provider   Provider @default(GITHUB)
+  externalId String   @map("external_id")
+
+  name        String
+  description String?
+  url         String
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String?       @map("organization_id")
+
+  memberships  RepositoryMembership[]
+  metricEvents MetricEvent[]
+
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lastSyncedAt DateTime @map("last_synced_at") @db.Timestamptz(3)
+
+  @@unique([provider, externalId])
+  @@index([organizationId])
+  @@index([createdAt])
+  @@index([lastSyncedAt])
+  @@map("repositories")
+  @@schema("metrics")
+}
+
+model User {
+  id String @id @default(nanoid())
+
+  provider   Provider @default(GITHUB)
+  externalId String   @map("external_id")
+
+  login String
+
+  memberships RepositoryMembership[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([provider, externalId])
+  @@index([provider, login])
+  @@map("users")
+  @@schema("metrics")
+}
+
+model RepositoryMembership {
+  id String @id @default(nanoid())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @map("user_id")
+
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  repositoryId String     @map("repository_id")
+
+  joinedAt DateTime @map("joined_at") @db.Timestamptz(3)
+
+  @@unique([userId, repositoryId])
+  @@index([repositoryId])
+  @@map("repository_memberships")
+  @@schema("metrics")
+}
+
+model MetricEvent {
+  id String
+
+  provider Provider @default(GITHUB)
+  type     String
+
+  // Main time axis for TimescaleDB hypertable and metric aggregations.
+  eventAt     DateTime @map("event_at") @db.Timestamptz(3)
+  publishedAt DateTime @map("published_at") @db.Timestamptz(3)
+  ingestedAt  DateTime @default(now()) @map("ingested_at") @db.Timestamptz(3)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String       @map("organization_id")
+
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  repositoryId String     @map("repository_id")
+
+  payload Json
+
+  @@id([id, eventAt])
+  @@index([id])
+  @@index([eventAt(sort: Desc)])
+  @@index([type, eventAt(sort: Desc)])
+  @@index([organizationId, eventAt(sort: Desc)])
+  @@index([repositoryId, eventAt(sort: Desc)])
+  @@index([publishedAt(sort: Desc)])
+  @@map("metric_events")
+  @@schema("metrics")
+}
+
+model Semester {
+  id String @id @default(nanoid())
+
+  season Season
+  year   Int
+  label  String
+
+  startDate DateTime @map("start_date") @db.Timestamptz(3)
+  endDate   DateTime @map("end_date") @db.Timestamptz(3)
+
+  semesterAssignments SemesterAssignment[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([season, year])
+  @@map("semesters")
+  @@schema("metrics")
+}
+
+model SemesterAssignment {
+  id String @id @default(nanoid())
+
+  type      SemesterAssignmentType
+  subjectId String                 @map("subject_id")
+
+  semester Semester @relation(fields: [semesterId], references: [id])
+
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  semesterId String   @map("semester_id")
+
+  @@unique([semesterId, type, subjectId])
+  @@map("semesters_assignments")
+  @@schema("metrics")
+}
+
+enum Provider {
+  GITHUB
+
+  @@schema("metrics")
+}
+
+enum Season {
+  AUTUMN
+  SPRING
+
+  @@schema("metrics")
+}
+
+enum SemesterAssignmentType {
+  ORGANIZATION
+  REPO
+  USER
+
+  @@schema("metrics")
+}
