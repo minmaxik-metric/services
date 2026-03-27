@@ -1,0 +1,175 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "./generated"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["analytics"]
+}
+
+model ScoringProfile {
+  id String @id
+
+  name        String
+  subjectType String @map("subject_type")
+
+  algorithmVersion String @map("algorithm_version")
+  categoryWeights  Json   @default("{}") @map("category_weights")
+  metricWeights    Json   @default("{}") @map("metric_weights")
+  optimalRanges    Json   @default("{}") @map("optimal_ranges")
+
+  isDefault Boolean @default(false) @map("is_default")
+  status    String  @default("ACTIVE")
+
+  scoreRuns   ScoreRun[]
+  ratings     Rating[]
+  metricStats MetricStat[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([subjectType, status, isDefault])
+  @@map("scoring_profiles")
+  @@schema("analytics")
+}
+
+model ScoreRun {
+  id String @id
+
+  subjectType    String  @map("subject_type")
+  organizationId String  @map("organization_id")
+  repositoryId   String? @map("repository_id")
+
+  bucket DateTime @db.Timestamptz(3)
+  period String
+
+  scoringProfile   ScoringProfile? @relation(fields: [scoringProfileId], references: [id], onDelete: SetNull)
+  scoringProfileId String?         @map("scoring_profile_id")
+
+  algorithmVersion String  @map("algorithm_version")
+  weights          Json    @default("{}")
+  status           String
+  error            String?
+
+  ratings     Rating[]
+  components  ScoreComponent[]
+  metricStats MetricStat[]
+
+  startedAt  DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  @@index([subjectType, organizationId, repositoryId, bucket(sort: Desc), period])
+  @@map("score_runs")
+  @@schema("analytics")
+}
+
+model Rating {
+  id String @id
+
+  scoreRun   ScoreRun @relation(fields: [scoreRunId], references: [id], onDelete: Cascade)
+  scoreRunId String   @map("score_run_id")
+
+  scoringProfile   ScoringProfile? @relation(fields: [scoringProfileId], references: [id], onDelete: SetNull)
+  scoringProfileId String?         @map("scoring_profile_id")
+
+  subjectType    String @map("subject_type")
+  organizationId String @map("organization_id")
+  repositoryId   String @map("repository_id")
+  subjectId      String @map("subject_id")
+  subjectLabel   String @map("subject_label")
+
+  bucket DateTime @db.Timestamptz(3)
+  period String
+
+  score                 Decimal @db.Decimal(8, 4)
+  rank                  Int
+  activityScore         Decimal @map("activity_score") @db.Decimal(8, 4)
+  productivityScore     Decimal @map("productivity_score") @db.Decimal(8, 4)
+  communicationScore    Decimal @map("communication_score") @db.Decimal(8, 4)
+  qualityScore          Decimal @map("quality_score") @db.Decimal(8, 4)
+  flowScore             Decimal @map("flow_score") @db.Decimal(8, 4)
+  repositoryHealthScore Decimal @map("repository_health_score") @db.Decimal(8, 4)
+  confidenceScore       Decimal @map("confidence_score") @db.Decimal(8, 4)
+  sampleCount           Int     @map("sample_count")
+
+  rawMetrics Json @default("{}") @map("raw_metrics")
+  metadata   Json @default("{}")
+
+  components ScoreComponent[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([scoringProfileId, subjectType, organizationId, repositoryId, subjectId, bucket, period], map: "ratings_identity_key")
+  @@index([subjectType, organizationId, repositoryId, bucket(sort: Desc), period, rank], map: "ratings_leaderboard_idx")
+  @@map("ratings")
+  @@schema("analytics")
+}
+
+model ScoreComponent {
+  id String @id
+
+  rating   Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  ratingId String @map("rating_id")
+
+  scoreRun   ScoreRun @relation(fields: [scoreRunId], references: [id], onDelete: Cascade)
+  scoreRunId String   @map("score_run_id")
+
+  subjectType    String @map("subject_type")
+  organizationId String @map("organization_id")
+  repositoryId   String @map("repository_id")
+  subjectId      String @map("subject_id")
+
+  bucket DateTime @db.Timestamptz(3)
+  period String
+
+  category        String
+  metric          String
+  rawValue        Float  @map("raw_value")
+  normalizedValue Float  @map("normalized_value")
+  weight          Float
+  weightedScore   Float  @map("weighted_score")
+  direction       String
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([ratingId], map: "score_components_rating_idx")
+  @@index([subjectType, organizationId, repositoryId, subjectId, bucket(sort: Desc), period], map: "score_components_lookup_idx")
+  @@map("score_components")
+  @@schema("analytics")
+}
+
+model MetricStat {
+  id String @id
+
+  scoreRun   ScoreRun @relation(fields: [scoreRunId], references: [id], onDelete: Cascade)
+  scoreRunId String   @map("score_run_id")
+
+  scoringProfile   ScoringProfile? @relation(fields: [scoringProfileId], references: [id], onDelete: SetNull)
+  scoringProfileId String?         @map("scoring_profile_id")
+
+  subjectType    String @map("subject_type")
+  organizationId String @map("organization_id")
+  repositoryId   String @map("repository_id")
+
+  bucket DateTime @db.Timestamptz(3)
+  period String
+
+  category    String
+  metric      String
+  sampleCount Int    @map("sample_count")
+
+  minValue Float @map("min_value")
+  p05Value Float @map("p05_value")
+  p50Value Float @map("p50_value")
+  p95Value Float @map("p95_value")
+  maxValue Float @map("max_value")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([scoringProfileId, subjectType, organizationId, repositoryId, bucket, period, metric], map: "metric_stats_identity_key")
+  @@map("metric_stats")
+  @@schema("analytics")
+}
