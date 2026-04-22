@@ -1,0 +1,133 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+	--radius: 1rem;
+	--background: oklch(0.982 0.018 86.7);
+	--foreground: oklch(0.19 0.026 248.1);
+	--card: oklch(0.994 0.012 94.1 / 0.82);
+	--card-foreground: oklch(0.19 0.026 248.1);
+	--popover: oklch(0.994 0.012 94.1);
+	--popover-foreground: oklch(0.19 0.026 248.1);
+	--primary: oklch(0.48 0.11 183.4);
+	--primary-foreground: oklch(0.98 0.014 183.4);
+	--secondary: oklch(0.93 0.036 84.6);
+	--secondary-foreground: oklch(0.28 0.036 248.1);
+	--muted: oklch(0.94 0.028 89.8);
+	--muted-foreground: oklch(0.48 0.034 244.2);
+	--accent: oklch(0.88 0.098 79.2);
+	--accent-foreground: oklch(0.23 0.033 60.2);
+	--destructive: oklch(0.59 0.2 27.8);
+	--border: oklch(0.86 0.03 84.1);
+	--input: oklch(0.89 0.03 84.1);
+	--ring: oklch(0.58 0.12 183.4);
+	--chart-1: oklch(0.58 0.14 183.4);
+	--chart-2: oklch(0.69 0.13 84.3);
+	--chart-3: oklch(0.53 0.1 214.1);
+	--chart-4: oklch(0.73 0.12 142.4);
+	--chart-5: oklch(0.68 0.15 43.5);
+}
+
+.dark {
+	--background: oklch(0.15 0.034 245.2);
+	--foreground: oklch(0.95 0.018 84.7);
+	--card: oklch(0.19 0.04 244.2 / 0.82);
+	--card-foreground: oklch(0.95 0.018 84.7);
+	--popover: oklch(0.19 0.04 244.2);
+	--popover-foreground: oklch(0.95 0.018 84.7);
+	--primary: oklch(0.68 0.14 183.4);
+	--primary-foreground: oklch(0.13 0.03 245.2);
+	--secondary: oklch(0.24 0.04 244.2);
+	--secondary-foreground: oklch(0.95 0.018 84.7);
+	--muted: oklch(0.25 0.035 244.2);
+	--muted-foreground: oklch(0.72 0.026 85.8);
+	--accent: oklch(0.72 0.13 82.5);
+	--accent-foreground: oklch(0.16 0.025 60.2);
+	--destructive: oklch(0.64 0.22 27.8);
+	--border: oklch(1 0 0 / 11%);
+	--input: oklch(1 0 0 / 14%);
+	--ring: oklch(0.68 0.14 183.4);
+	--chart-1: oklch(0.68 0.14 183.4);
+	--chart-2: oklch(0.74 0.14 83.4);
+	--chart-3: oklch(0.65 0.12 214.1);
+	--chart-4: oklch(0.72 0.13 142.4);
+	--chart-5: oklch(0.71 0.16 43.5);
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+
+	body {
+		@apply min-h-screen bg-background text-foreground antialiased;
+		font-family:
+			"Space Grotesk", "Aptos Display", "Segoe UI Variable", sans-serif;
+		background:
+			radial-gradient(circle at top left, oklch(0.77 0.12 183.4 / 0.35), transparent 32rem),
+			radial-gradient(circle at 85% 15%, oklch(0.83 0.12 82.7 / 0.32), transparent 26rem),
+			linear-gradient(135deg, oklch(0.985 0.018 86.7), oklch(0.93 0.028 194.8));
+	}
+
+	.dark body {
+		background:
+			radial-gradient(circle at 12% 8%, oklch(0.55 0.12 183.4 / 0.3), transparent 30rem),
+			radial-gradient(circle at 85% 20%, oklch(0.62 0.12 82.7 / 0.22), transparent 24rem),
+			linear-gradient(135deg, oklch(0.12 0.035 245.2), oklch(0.18 0.03 221.4));
+	}
+
+	::selection {
+		background: oklch(0.72 0.14 83.4 / 0.45);
+	}
+}
+
+@layer utilities {
+	.metric-grid {
+		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+	}
+
+	.surface {
+		@apply border bg-card/80 shadow-[0_18px_80px_-40px_oklch(0.18_0.04_245.2)] backdrop-blur-2xl;
+	}
+
+	.no-scrollbar {
+		-ms-overflow-style: none;
+		scrollbar-width: none;
+	}
+
+	.no-scrollbar::-webkit-scrollbar {
+		display: none;
+	}
+}
