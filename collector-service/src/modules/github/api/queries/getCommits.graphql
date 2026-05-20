@@ -1,0 +1,46 @@
+query getCommits(
+	$owner: String!
+	$repo: String!
+	$branch: String!
+	$since: GitTimestamp = null
+	$cursor: String = null
+) {
+	repository(owner: $owner, name: $repo) {
+		owner {
+			id
+			login
+			url
+			avatarUrl
+		}
+		id
+		name
+		url
+		ref(qualifiedName: $branch) {
+			target {
+				__typename
+				... on Commit {
+					history(first: 100, after: $cursor, since: $since) {
+						pageInfo {
+							hasNextPage
+							endCursor
+						}
+						nodes {
+							oid
+							message
+							author {
+								name
+								user {
+									id
+									login
+								}
+							}
+							additions
+							deletions
+							committedDate
+						}
+					}
+				}
+			}
+		}
+	}
+}
