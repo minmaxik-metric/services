@@ -1,0 +1,23 @@
+version: '3.9'
+
+services:
+  auth-service:
+    container_name: metric-auth
+    image: metric/auth-service:prod
+    build:
+        context: .
+        dockerfile: Dockerfile
+    restart: always
+    env_file:
+        - .env.production
+    volumes:
+      - ./keys:/app/keys:ro
+      - ../logs/auth:/var/log/services/auth
+    expose:
+        - 9101
+    networks:
+        - metric-network
+
+networks:
+  metric-network:
+    external: true

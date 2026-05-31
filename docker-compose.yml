@@ -1,0 +1,508 @@
+name: metric-service
+
+services:
+    postgres:
+        image: postgres:18-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+            POSTGRES_DB: postgres
+        volumes:
+            - postgres_data:/var/lib/postgresql
+            - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER} -d postgres",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 30
+            start_period: 30s
+        networks:
+            - metric-network
+
+    timescale:
+        image: timescale/timescaledb:2.26.4-pg18
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: ${TIMESCALE_DB_USER:?TIMESCALE_DB_USER is required}
+            POSTGRES_PASSWORD: ${TIMESCALE_DB_PASSWORD:?TIMESCALE_DB_PASSWORD is required}
+            POSTGRES_DB: metric_calc
+        volumes:
+            - timescaledb_data:/var/lib/postgresql
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -h 127.0.0.1 -p 5432 -U ${TIMESCALE_DB_USER} -d metric_calc",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 30
+            start_period: 30s
+        networks:
+            - metric-network
+
+    mongo:
+        image: mongo:8.2
+        restart: unless-stopped
+        environment:
+            MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER:?MONGODB_USER is required}
+            MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:?MONGODB_PASSWORD is required}
+        volumes:
+            - mongo_data:/data/db
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' || exit 1",
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        networks:
+            - metric-network
+
+    rabbitmq:
+        image: rabbitmq:4-management-alpine
+        restart: unless-stopped
+        environment:
+            RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?RABBITMQ_DEFAULT_USER is required}
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS is required}
+        volumes:
+            - rabbitmq_data:/var/lib/rabbitmq
+        healthcheck:
+            test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        networks:
+            - metric-network
+
+    jaeger:
+        image: jaegertracing/all-in-one:1.76.0
+        restart: unless-stopped
+        ports:
+            - "${JAEGER_UI_PORT:-16686}:16686"
+        networks:
+            - metric-network
+
+    auth-migrate:
+        image: metric-service/auth-service:production
+        pull_policy: build
+        build:
+            context: ./auth-service
+        restart: on-failure:5
+        command:
+            - sh
+            - -ec
+            - |
+                until node -e "const net=require('net'); const s=net.connect(5432,'postgres'); s.once('connect',()=>{s.end(); process.exit(0)}); s.once('error',()=>process.exit(1)); setTimeout(()=>process.exit(1),3000);"; do
+                  echo "Waiting for postgres:5432..."
+                  sleep 2
+                done
+                yarn prisma migrate deploy
+        environment:
+            NODE_ENV: production
+            DATABASE_URI: ${AUTH_DATABASE_URI:?AUTH_DATABASE_URI is required}
+        depends_on:
+            postgres:
+                condition: service_healthy
+        networks:
+            - metric-network
+
+    users-migrate:
+        image: metric-service/users-service:production
+        pull_policy: build
+        build:
+            context: ./users-service
+        restart: on-failure:5
+        command:
+            - sh
+            - -ec
+            - |
+                until node -e "const net=require('net'); const s=net.connect(5432,'postgres'); s.once('connect',()=>{s.end(); process.exit(0)}); s.once('error',()=>process.exit(1)); setTimeout(()=>process.exit(1),3000);"; do
+                  echo "Waiting for postgres:5432..."
+                  sleep 2
+                done
+                yarn prisma migrate deploy
+        environment:
+            NODE_ENV: production
+            DATABASE_URI: ${USERS_DATABASE_URI:?USERS_DATABASE_URI is required}
+        depends_on:
+            postgres:
+                condition: service_healthy
+        networks:
+            - metric-network
+
+    processing-migrate:
+        image: metric-service/processing-service:production
+        pull_policy: build
+        build:
+            context: ./processing-service
+        restart: on-failure:5
+        command:
+            - sh
+            - -ec
+            - |
+                until node -e "const net=require('net'); const s=net.connect(5432,'timescale'); s.once('connect',()=>{s.end(); process.exit(0)}); s.once('error',()=>process.exit(1)); setTimeout(()=>process.exit(1),3000);"; do
+                  echo "Waiting for timescale:5432..."
+                  sleep 2
+                done
+                yarn prisma migrate deploy
+        environment:
+            NODE_ENV: production
+            DATABASE_URI: ${PROCESSING_DATABASE_URI:?PROCESSING_DATABASE_URI is required}
+        depends_on:
+            timescale:
+                condition: service_healthy
+        networks:
+            - metric-network
+
+    analytics-migrate:
+        image: metric-service/analytics-service:production
+        pull_policy: build
+        build:
+            context: ./analytics-service
+        restart: on-failure:5
+        command:
+            - sh
+            - -ec
+            - |
+                until node -e "const net=require('net'); const s=net.connect(5432,'timescale'); s.once('connect',()=>{s.end(); process.exit(0)}); s.once('error',()=>process.exit(1)); setTimeout(()=>process.exit(1),3000);"; do
+                  echo "Waiting for timescale:5432..."
+                  sleep 2
+                done
+                yarn prisma migrate deploy
+        environment:
+            NODE_ENV: production
+            DATABASE_URI: ${ANALYTICS_DATABASE_URI:?ANALYTICS_DATABASE_URI is required}
+        depends_on:
+            timescale:
+                condition: service_healthy
+        networks:
+            - metric-network
+
+    users-service:
+        image: metric-service/users-service:production
+        pull_policy: build
+        build:
+            context: ./users-service
+        restart: unless-stopped
+        environment:
+            NODE_ENV: production
+            GRPC_HOST: 0.0.0.0
+            GRPC_PORT: 50052
+            DATABASE_URI: ${USERS_DATABASE_URI:?USERS_DATABASE_URI is required}
+        depends_on:
+            users-migrate:
+                condition: service_completed_successfully
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    'node -e "const net=require(''net''); const s=net.connect(50052,''127.0.0.1''); s.on(''connect'',()=>process.exit(0)); s.on(''error'',()=>process.exit(1)); setTimeout(()=>process.exit(1),3000);"',
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        networks:
+            - metric-network
+
+    auth-service:
+        image: metric-service/auth-service:production
+        pull_policy: build
+        build:
+            context: ./auth-service
+        restart: unless-stopped
+        environment:
+            NODE_ENV: production
+            LOG_LEVEL: ${AUTH_LOG_LEVEL:-info}
+            LOG_PATH: /var/log/services/auth/auth.log
+            GRPC_HOST: 0.0.0.0
+            GRPC_PORT: 50051
+            USERS_GRPC_URL: users-service:50052
+            DATABASE_URI: ${AUTH_DATABASE_URI:?AUTH_DATABASE_URI is required}
+            JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
+            JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+            JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-7d}
+            JWT_REFRESH_TOKEN_TTL: ${JWT_REFRESH_TOKEN_TTL:-20d}
+            JAEGER_URL: ${JAEGER_URL:-http://jaeger:4317}
+        secrets:
+            - jwt_private_key
+            - jwt_public_key
+        volumes:
+            - auth_logs:/var/log/services/auth
+        depends_on:
+            auth-migrate:
+                condition: service_completed_successfully
+            users-service:
+                condition: service_healthy
+            jaeger:
+                condition: service_started
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    'node -e "const net=require(''net''); const s=net.connect(50051,''127.0.0.1''); s.on(''connect'',()=>process.exit(0)); s.on(''error'',()=>process.exit(1)); setTimeout(()=>process.exit(1),3000);"',
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        networks:
+            - metric-network
+
+    processing-service:
+        image: metric-service/processing-service:production
+        pull_policy: build
+        build:
+            context: ./processing-service
+        restart: unless-stopped
+        environment:
+            NODE_ENV: production
+            DATABASE_URI: ${PROCESSING_DATABASE_URI:?PROCESSING_DATABASE_URI is required}
+            RABBITMQ_URI: ${RABBITMQ_URI:?RABBITMQ_URI is required}
+            RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-raw_events}
+            RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-events}
+        depends_on:
+            processing-migrate:
+                condition: service_completed_successfully
+            rabbitmq:
+                condition: service_healthy
+        networks:
+            - metric-network
+
+    analytics-service:
+        image: metric-service/analytics-service:production
+        pull_policy: build
+        build:
+            context: ./analytics-service
+        restart: unless-stopped
+        environment:
+            NODE_ENV: production
+            DATABASE_URI: ${ANALYTICS_DATABASE_URI:?ANALYTICS_DATABASE_URI is required}
+            GRPC_HOST: 0.0.0.0
+            GRPC_PORT: 50054
+        depends_on:
+            analytics-migrate:
+                condition: service_completed_successfully
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    'node -e "const net=require(''net''); const s=net.connect(50054,''127.0.0.1''); s.on(''connect'',()=>process.exit(0)); s.on(''error'',()=>process.exit(1)); setTimeout(()=>process.exit(1),3000);"',
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        networks:
+            - metric-network
+
+    collector-service:
+        image: metric-service/collector-service:production
+        pull_policy: build
+        build:
+            context: ./collector-service
+        restart: unless-stopped
+        ports:
+            - "${COLLECTOR_PORT:-4001}:4001"
+        environment:
+            NODE_ENV: production
+            HTTP_PORT: 4001
+            HTTP_HOST: ${COLLECTOR_PUBLIC_URL:?COLLECTOR_PUBLIC_URL is required}
+            GITHUB_TOKEN: ${GITHUB_TOKEN:?GITHUB_TOKEN is required}
+            GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?GITHUB_WEBHOOK_SECRET is required}
+            GITHUB_ALLOWED_ORGS: ${GITHUB_ALLOWED_ORGS:?GITHUB_ALLOWED_ORGS is required}
+            DATABASE_URI: ${COLLECTOR_DATABASE_URI:?COLLECTOR_DATABASE_URI is required}
+            RABBITMQ_URI: ${RABBITMQ_URI:?RABBITMQ_URI is required}
+            RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-raw_events}
+            RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-events}
+            AUTH_GRPC_URL: auth-service:50051
+        depends_on:
+            mongo:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+            auth-service:
+                condition: service_healthy
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    'node -e "require(''http'').get(''http://127.0.0.1:4001'', r => process.exit(r.statusCode < 500 ? 0 : 1)).on(''error'', () => process.exit(1))"',
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        networks:
+            - metric-network
+
+    gateway-service:
+        image: metric-service/gateway-service:production
+        pull_policy: build
+        build:
+            context: ./gateway-service
+        restart: unless-stopped
+        ports:
+            - "${GATEWAY_PORT:-4000}:4000"
+        environment:
+            NODE_ENV: production
+            HTTP_PORT: 4000
+            HTTP_HOST: ${GATEWAY_PUBLIC_URL:?GATEWAY_PUBLIC_URL is required}
+            HTTP_CORS: ${HTTP_CORS:?HTTP_CORS is required}
+            FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required}
+            COOKIES_DOMAIN: ${COOKIES_DOMAIN:?COOKIES_DOMAIN is required}
+            COOKIES_SECRET: ${COOKIES_SECRET:?COOKIES_SECRET is required}
+            JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+            GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?GITHUB_CLIENT_ID is required}
+            GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?GITHUB_CLIENT_SECRET is required}
+            GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:?GITHUB_CALLBACK_URL is required}
+            AUTH_GRPC_URL: auth-service:50051
+            USERS_GRPC_URL: users-service:50052
+            ANALYTICS_GRPC_URL: analytics-service:50054
+            JAEGER_URL: ${JAEGER_URL:-http://jaeger:4317}
+        secrets:
+            - jwt_public_key
+        depends_on:
+            auth-service:
+                condition: service_healthy
+            users-service:
+                condition: service_healthy
+            analytics-service:
+                condition: service_healthy
+            jaeger:
+                condition: service_started
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    'node -e "require(''http'').get(''http://127.0.0.1:4000/docs'', r => process.exit(r.statusCode < 500 ? 0 : 1)).on(''error'', () => process.exit(1))"',
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        networks:
+            - metric-network
+
+    frontend:
+        image: metric-service/frontend:production
+        pull_policy: build
+        build:
+            context: ./frontend
+            args:
+                VITE_GATEWAY_URL: ${VITE_GATEWAY_URL:?VITE_GATEWAY_URL is required}
+        restart: unless-stopped
+        ports:
+            - "${FRONTEND_PORT:-3000}:80"
+        depends_on:
+            gateway-service:
+                condition: service_healthy
+        networks:
+            - metric-network
+
+    postgres-exporter:
+        image: prometheuscommunity/postgres-exporter
+        restart: unless-stopped
+        profiles: ["observability"]
+        environment:
+            DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
+        depends_on:
+            postgres:
+                condition: service_healthy
+        networks:
+            - metric-network
+
+    rabbitmq-exporter:
+        image: kbudde/rabbitmq-exporter
+        restart: unless-stopped
+        profiles: ["observability"]
+        environment:
+            RABBIT_URL: http://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:15672
+        depends_on:
+            rabbitmq:
+                condition: service_healthy
+        networks:
+            - metric-network
+
+    node-exporter:
+        image: prom/node-exporter
+        restart: unless-stopped
+        profiles: ["observability"]
+        networks:
+            - metric-network
+
+    prometheus:
+        image: prom/prometheus:v3.9.1
+        restart: unless-stopped
+        profiles: ["observability"]
+        volumes:
+            - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        ports:
+            - "${PROMETHEUS_PORT:-9090}:9090"
+        depends_on:
+            - gateway-service
+            - auth-service
+        networks:
+            - metric-network
+
+    loki:
+        image: grafana/loki:3.6
+        restart: unless-stopped
+        profiles: ["observability"]
+        command: -config.file=/etc/loki/config.yml
+        volumes:
+            - ./docker/loki-config.yml:/etc/loki/config.yml:ro
+            - loki_data:/loki
+            - loki_wal:/wal
+        networks:
+            - metric-network
+
+    promtail:
+        image: grafana/promtail:3.6
+        restart: unless-stopped
+        profiles: ["observability"]
+        command: -config.file=/etc/promtail/config.yml
+        volumes:
+            - ./docker/promtail-config.yml:/etc/promtail/config.yml:ro
+            - auth_logs:/var/log/services/auth:ro
+        depends_on:
+            - loki
+        networks:
+            - metric-network
+
+    grafana:
+        image: grafana/grafana:12.3
+        restart: unless-stopped
+        profiles: ["observability"]
+        ports:
+            - "${GRAFANA_PORT:-3002}:3000"
+        volumes:
+            - grafana_storage:/var/lib/grafana
+        depends_on:
+            - prometheus
+            - loki
+        networks:
+            - metric-network
+
+secrets:
+    jwt_private_key:
+        file: ${JWT_PRIVATE_KEY_FILE:?JWT_PRIVATE_KEY_FILE is required}
+    jwt_public_key:
+        file: ${JWT_PUBLIC_KEY_FILE:?JWT_PUBLIC_KEY_FILE is required}
+
+volumes:
+    postgres_data:
+    timescaledb_data:
+    mongo_data:
+    rabbitmq_data:
+    auth_logs:
+    grafana_storage:
+    loki_data:
+    loki_wal:
+
+networks:
+    metric-network:
+        driver: bridge

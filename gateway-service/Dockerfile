@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.7
+ARG NODE_VERSION=24-alpine
+
+FROM node:${NODE_VERSION} AS deps
+WORKDIR /app
+ENV YARN_CACHE_FOLDER=/tmp/.yarn-cache
+RUN apk add --no-cache libc6-compat
+COPY package.json yarn.lock ./
+RUN corepack enable && yarn install --frozen-lockfile
+
+FROM deps AS build
+WORKDIR /app
+COPY . .
+RUN yarn build
+
+FROM node:${NODE_VERSION} AS prod-deps
+WORKDIR /app
+ENV NODE_ENV=production
+ENV YARN_CACHE_FOLDER=/tmp/.yarn-cache
+RUN apk add --no-cache libc6-compat
+COPY package.json yarn.lock ./
+RUN corepack enable && yarn install --frozen-lockfile --production=true && yarn cache clean
+
+FROM node:${NODE_VERSION} AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apk add --no-cache tini libc6-compat
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/dist ./dist
+USER node
+EXPOSE 4000
+ENTRYPOINT ["tini", "--"]
+CMD ["node", "dist/main"]

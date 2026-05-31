@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+.nest
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.log
+logs
+keys
+prisma/generated
+Dockerfile
+docker-compose*.yml
+.git
+.codex
+.agents
